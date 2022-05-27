@@ -1,6 +1,6 @@
 import random
 import uuid
-from typing import Optional, Literal, Tuple, Callable
+from typing import Optional, Tuple, Callable
 
 from app.events import *
 
@@ -29,7 +29,7 @@ class SideStacker:
         - Player turn
         - Board state
     The game id is an unique identifier for this game.
-    The players dict stores the currently connected players their secret token and turn as a tuple.
+    The players dict stores the currently connected players their id and turn as a tuple.
     The current turn is an integer counter of the current turn.
     The player turn states which player has the right to execute actions on the board, this can be 'None', 'C' or 'X'
     The board is represented as a 7x7 2d-array initialized with None.
@@ -51,7 +51,7 @@ class SideStacker:
 
     The game can start when theres two connected players.
 
-    Each player has a secret token associated to their state, this is used to naively verify their plays.
+    Each player has an id associated to their state, this is used to naively verify their plays.
 
     This class also implements the observer pattern to notify other subsystems of
     actions in the game. Each turn the observers are notified of state changes in
@@ -60,52 +60,52 @@ class SideStacker:
     Each event is an instance of the `SideStackerEvent' class or subclasses.
     """
 
-    def __init__(self):
-        self.id = uuid.uuid4()
+    def __init__(self, game_id=str(uuid.uuid4())):
+        self.id = game_id
         self.board = [[None] * 7 for _ in range(7)]
         self.players = {}
         self.dependants = []
         self.turn = 0
         self.player_turn = None
 
-    def connect(self, secret_token: str) -> Optional[Tuple[str, int]]:
+    def connect(self, player_id: str) -> Optional[Tuple[str, int]]:
         """
         Adds a player to the game with the given token.
         Assigns them a token C, X and a turn (0 or 1).
-        If there are more than two players or the secret token already exists, do nothing.
+        If there are more than two players or the id already exists, do nothing.
         """
         if len(self.players) >= 2: return None
-        if secret_token in self.players: return None
+        if player_id in self.players: return None
         if len(self.players) == 0:
-            self.players[secret_token] = ('X' if random.randint(0, 1) == 0 else 'C',
-                                          random.randint(0, 1))
+            self.players[player_id] = ('X' if random.randint(0, 1) == 0 else 'C',
+                                       random.randint(0, 1))
         else:
             p1 = next(iter(self.players.values()))
             p2_pieces = 'C' if p1[0] == 'X' else 'X'
             p2_turn = 0 if p1[1] == 1 else 1
-            self.players[secret_token] = (p2_pieces, p2_turn)
+            self.players[player_id] = (p2_pieces, p2_turn)
             self.turn = 0
             self.player_turn = p1[0] if p1[1] < p2_turn else p2_pieces
 
-        self.notify(PlayerConnected(*self.players[secret_token]))
+        self.notify(PlayerConnected(*self.players[player_id]))
 
-        return self.players[secret_token]
+        return self.players[player_id]
 
-    def disconnect(self, secret_token: str) -> None:
+    def disconnect(self, player_id: str) -> None:
         """
         Disconnects a player.
         Removes player from the players dict and the other player automatically wins the game.
         """
-        pieces = self.players[secret_token]
-        del self.players[secret_token]
-        self.notify(PlayerDisconnected(pieces))
-        self.notify(PlayerWon('X' if pieces == 'C' else 'C'))
+        pieces = self.players[player_id]
+        del self.players[player_id]
+        self.notify(PlayerDisconnected(self.id, pieces))
+        self.notify(PlayerWon(self.id, 'X' if pieces == 'C' else 'C'))
 
-    def place_piece(self, secret_token: str, row: int, side: Literal['L', 'R']) -> None:
+    def place_piece(self, player_id: str, row: int, side: Literal['L', 'R']) -> None:
         if len(self.players) < 2:
             raise ValueError('There should be two players to start the game')
 
-        if self.players[secret_token][0] != self.player_turn:
+        if self.players[player_id][0] != self.player_turn:
             raise ValueError('Players should place pieces on their own turn')
 
         # Create a range object iterating from 0 to 6 or 6 to 0 depending on the chosen side
@@ -113,7 +113,7 @@ class SideStacker:
         found = False
         for i in search_iter:
             if self.board[row][i] is None:
-                self.board[row][i] = self.players[secret_token][0]
+                self.board[row][i] = self.players[player_id][0]
                 found = True
                 break
 
@@ -121,10 +121,10 @@ class SideStacker:
 
         winner = self.evaluate_game()
         if winner is not None:
-            self.notify(PlayerWon(winner))
+            self.notify(PlayerWon(self.id, winner))
             return
         else:
-            self.notify(PiecePlaced(self.player_turn, row, side, self.turn))
+            self.notify(PiecePlaced(self.id, self.player_turn, row, side, self.turn))
             self.turn += 1
             self.player_turn = 'X' if self.player_turn == 'C' else 'C'
 

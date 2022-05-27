@@ -26,20 +26,20 @@ def test_connect_more_than_two_returns_none():
     assert ss.connect('xyz') is None
 
 
-def test_connect_with_same_token_does_nothing():
+def test_connect_with_same_id_does_nothing():
     ss = SideStacker()
-    token = 'abc'
-    ss.connect(token)
-    assert ss.connect(token) is None
+    player_id = 'abc'
+    ss.connect(player_id)
+    assert ss.connect(player_id) is None
 
 
 # Disconnect
 
 def test_player_deleted_after_disconnect():
     ss = SideStacker()
-    token = 'abc'
-    ss.connect(token)
-    ss.disconnect(token)
+    player_id = 'abc'
+    ss.connect(player_id)
+    ss.disconnect(player_id)
     assert len(ss.players) == 0
 
 
@@ -214,16 +214,16 @@ def test_winning_diagonal_bl_stack_should_win():
 
 
 # utils
-def new_sidestacker_game(p1_token='abc', p2_token='xyz'):
+def new_sidestacker_game(p1_id='abc', p2_id='xyz'):
     """"
     Creates a new Sidestacker instance with two players.
     returns a tuple of the form (instance, first_turn_player, second_turn_player)
     """
     ss = SideStacker()
-    p1_token = p1_token
-    p2_token = p2_token
-    p1 = (p1_token,) + ss.connect(p1_token)
-    p2 = (p2_token,) + ss.connect(p2_token)
+    p1_id = p1_id
+    p2_id = p2_id
+    p1 = (p1_id,) + ss.connect(p1_id)
+    p2 = (p2_id,) + ss.connect(p2_id)
 
     first_turn_player = p1 if p1[2] < p2[2] else p2
     second_turn_player = p1 if first_turn_player == p2 else p2
