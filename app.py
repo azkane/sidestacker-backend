@@ -1,12 +1,13 @@
+import os
 import uuid
 
-from flask import Flask, abort, jsonify
+from flask import Flask, abort, jsonify, send_from_directory
 from flask_sock import Sock
 
 from connection_handler import GameConnectionHandler
 from db_handler import DBHandler
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='build')
 sock = Sock(app)
 
 game_connection_handler = GameConnectionHandler(app.logger)
@@ -42,3 +43,10 @@ def game_endpoint(ws, game_id):
             game_connection_handler.close_connection(game_id, player_id)
 
 
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    if path != "" and os.path.exists(app.static_folder + '/' + path):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
