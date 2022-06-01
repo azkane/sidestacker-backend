@@ -1,6 +1,5 @@
-import pytest
-
-from app.sidestacker import SideStacker
+from events import PiecePlacedError
+from sidestacker import SideStacker
 
 
 # Connect
@@ -80,31 +79,51 @@ def test_place_piece_adds_piece_to_board():
 
     # If theres no space available, raise exception, maintain current turn
     current_turn = ss.turn
-    current_player_turn = ss.player_turn
-    with pytest.raises(ValueError):
-        ss.place_piece(second_turn_player[0], 0, 'R')
-    assert current_turn == ss.turn
-    assert current_player_turn == ss.player_turn
+
+    notification = None
+
+    def observer(ev):
+        nonlocal notification
+        notification = ev
+
+    ss.add_observer(observer)
+    ss.place_piece(second_turn_player[0], 0, 'R')
+    assert isinstance(notification, PiecePlacedError)
+    assert notification.turn == current_turn
+    assert notification.detail == 'Theres no available space in the selected row'
 
 
-def test_place_piece_on_wrong_turn_should_raise():
+def test_place_piece_on_wrong_turn_should_notify():
     (ss, first_turn_player, second_turn_player) = new_sidestacker_game()
+    notification = None
+
+    def observer(ev):
+        nonlocal notification
+        notification = ev
+
+    ss.add_observer(observer)
     ss.place_piece(first_turn_player[0], 0, 'L')
-
-    current_turn = ss.turn
-    current_player_turn = ss.player_turn
-    with pytest.raises(ValueError):
-        ss.place_piece(first_turn_player[0], 0, 'L')
-    assert current_turn == ss.turn
-    assert current_player_turn == ss.player_turn
+    ss.place_piece(first_turn_player[0], 0, 'L')
+    assert isinstance(notification, PiecePlacedError)
+    assert notification.turn == ss.turn
+    assert notification.detail == 'Players should place pieces on their own turn'
 
 
-def test_place_piece_without_two_players_should_raise():
+def test_place_piece_without_two_players_should_notify():
     ss = SideStacker()
     p1 = ss.connect('abc')
 
-    with pytest.raises(ValueError):
-        ss.place_piece(p1[0], 0, 'L')
+    notification = None
+
+    def observer(ev):
+        nonlocal notification
+        notification = ev
+
+    ss.add_observer(observer)
+    ss.place_piece(p1[0], 0, 'L')
+
+    assert isinstance(notification, PiecePlacedError)
+    assert notification.detail == 'There should be two players to start the game'
 
 
 # Evaluation
@@ -151,13 +170,13 @@ def test_every_winning_diagonal_stack_should_win():
             # try to add a diagonal in the top-right
             if i - 3 >= 0 and j + 3 < 7:
                 w = [[None] * 7 for _ in range(7)]
-                for (di, dj) in zip(range(i, i - 4, -1), range(j, j+4)):
+                for (di, dj) in zip(range(i, i - 4, -1), range(j, j + 4)):
                     w[di][dj] = 'C'
                 assert ss.evaluate_game(w) == 'C'
             # try to add a diagonal in the top-left
             if i - 3 >= 0 and j - 3 >= 0:
                 w = [[None] * 7 for _ in range(7)]
-                for (di, dj) in zip(range(i, i -4, -1), range(j, j -4, -1)):
+                for (di, dj) in zip(range(i, i - 4, -1), range(j, j - 4, -1)):
                     w[di][dj] = 'C'
                 assert ss.evaluate_game(w) == 'C'
 
@@ -199,6 +218,7 @@ def test_winning_diagonal_br_stack_should_win():
          [None, None, None, None, None, None, None],
          ]
     assert ss.evaluate_game(w) == 'X'
+
 
 def test_winning_diagonal_bl_stack_should_win():
     ss = SideStacker()

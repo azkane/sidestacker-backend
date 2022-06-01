@@ -1,8 +1,8 @@
 import random
 import uuid
-from typing import Optional, Tuple, Callable
+from typing import Tuple, Callable
 
-from app.events import *
+from events import *
 
 
 class SideStacker:
@@ -70,7 +70,7 @@ class SideStacker:
 
     def connect(self, player_id: str) -> Optional[Tuple[str, int]]:
         """
-        Adds a player to the game with the given token.
+        Adds a player to the game with the given id.
         Assigns them a token C, X and a turn (0 or 1).
         If there are more than two players or the id already exists, do nothing.
         """
@@ -87,7 +87,8 @@ class SideStacker:
             self.turn = 0
             self.player_turn = p1[0] if p1[1] < p2_turn else p2_pieces
 
-        self.notify(PlayerConnected(*self.players[player_id]))
+        self.notify(PlayerConnected(self.id, player_id, *self.players[player_id]))
+        self.notify(PlayerInfo(self.id, [{'piece': p, 'turn': t} for (p, t) in self.players.values()]))
 
         return self.players[player_id]
 
@@ -99,14 +100,22 @@ class SideStacker:
         pieces = self.players[player_id]
         del self.players[player_id]
         self.notify(PlayerDisconnected(self.id, pieces))
-        self.notify(PlayerWon(self.id, 'X' if pieces == 'C' else 'C'))
+        self.notify(GameOver(self.id, 'X' if pieces == 'C' else 'C'))
 
     def place_piece(self, player_id: str, row: int, side: Literal['L', 'R']) -> None:
         if len(self.players) < 2:
-            raise ValueError('There should be two players to start the game')
+            self.notify(PiecePlacedError(self.id,
+                                         player_id,
+                                         self.turn,
+                                         'There should be two players to start the game'))
+            return
 
         if self.players[player_id][0] != self.player_turn:
-            raise ValueError('Players should place pieces on their own turn')
+            self.notify(PiecePlacedError(self.id,
+                                         player_id,
+                                         self.turn,
+                                         'Players should place pieces on their own turn'))
+            return
 
         # Create a range object iterating from 0 to 6 or 6 to 0 depending on the chosen side
         search_iter = range(0, 7) if side == 'L' else range(6, -1, -1)
@@ -117,11 +126,19 @@ class SideStacker:
                 found = True
                 break
 
-        if not found: raise ValueError('Theres no available space in the selected row')
+        if not found:
+            self.notify(PiecePlacedError(self.id,
+                                         player_id,
+                                         self.turn,
+                                         'Theres no available space in the selected row'))
+            return
 
         winner = self.evaluate_game()
         if winner is not None:
-            self.notify(PlayerWon(self.id, winner))
+            self.notify(GameOver(self.id, winner))
+            return
+        elif self.turn == 7 * 7:
+            self.notify(GameOver(self.id, None))
             return
         else:
             self.notify(PiecePlaced(self.id, self.player_turn, row, side, self.turn))
