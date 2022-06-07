@@ -141,9 +141,11 @@ class SideStacker:
             self.notify(GameOver(self.id, None))
             return
         else:
-            self.notify(PiecePlaced(self.id, self.player_turn, row, side, self.turn))
+            current_turn = self.turn
+            current_player = self.player_turn
             self.turn += 1
             self.player_turn = 'X' if self.player_turn == 'C' else 'C'
+            self.notify(PiecePlaced(self.id, current_player, row, side, current_turn))
 
     def evaluate_game(self, _board=None) -> Optional[Literal['X', 'C']]:
         """
