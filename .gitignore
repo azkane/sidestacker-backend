@@ -1,3 +1,5 @@
 db.sqlite
 build
 .pytest_cache
+__pycache__
+sidestacker.tar.gz
