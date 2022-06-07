@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from flask import Flask, abort, jsonify, send_from_directory
+from flask import Flask, abort, jsonify, send_from_directory, request
 from flask_sock import Sock
 
 from connection_handler import GameConnectionHandler
@@ -16,7 +16,9 @@ db_handler = DBHandler()
 
 @app.route('/api/new-game', methods=['POST'])
 def new_game():
-    game_instance = game_connection_handler.new_game()
+    is_against_bot = request.args.get('bot', False)
+
+    game_instance = game_connection_handler.new_game(is_against_bot)
     db_handler.manage_game(game_instance)
 
     game_id = game_instance.id

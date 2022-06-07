@@ -2,6 +2,7 @@ import logging
 import uuid
 from json import dumps, loads
 
+from bot import Bot
 from events import *
 from sidestacker import SideStacker
 
@@ -22,13 +23,14 @@ class GameConnectionHandler:
         self.games = {}
         self._log = logger
 
-    def new_game(self):
+    def new_game(self, is_against_bot = False):
         game_id = str(uuid.uuid4())
         self._log.debug('[gId: %s] A new game was created' % game_id)
         game_instance = self._create_sidestacker_instance(game_id)
         self.games[game_id] = {
             'game': game_instance,
-            'players': {}
+            'players': {},
+            'is_against_bot': is_against_bot
         }
 
         return game_instance
@@ -47,6 +49,14 @@ class GameConnectionHandler:
 
         ss = game['game']
         ss.connect(player_id)
+
+        if game['is_against_bot']:
+            bot_id = str(uuid.uuid4()).split('-')[-1]
+            bot = Bot(ss, bot_id)
+            game['players'][bot_id] = bot
+
+            ss.add_observer(bot.process_game_events)
+            ss.connect(bot_id)
 
     def handle_client_message(self, game_id, player_id, message):
         """
