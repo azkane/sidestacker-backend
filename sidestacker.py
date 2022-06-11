@@ -1,5 +1,7 @@
 import random
 import uuid
+
+from itertools import repeat
 from typing import Tuple, Callable
 
 from events import *
@@ -117,25 +119,19 @@ class SideStacker:
                                          'Players should place pieces on their own turn'))
             return
 
-        # Create a range object iterating from 0 to 6 or 6 to 0 depending on the chosen side
-        search_iter = range(0, 7) if side == 'L' else range(6, -1, -1)
-        found = False
-        for i in search_iter:
-            if self.board[row][i] is None:
-                self.board[row][i] = self.players[player_id][0]
-                found = True
-                break
-
-        if not found:
+        if not is_move_legal(self.board, row, side):
             self.notify(PiecePlacedError(self.id,
                                          player_id,
                                          self.turn,
                                          'Theres no available space in the selected row'))
             return
 
-        winner = self.evaluate_game()
-        if winner is not None:
-            self.notify(GameOver(self.id, winner))
+        col = get_next_free_position(self.board, row, side)
+        self.board[row][col] = self.players[player_id][0]
+        winner = evaluate_move(self.board, row, col, self.player_turn)
+
+        if winner:
+            self.notify(GameOver(self.id, self.player_turn))
             return
         elif self.turn == 7 * 7:
             self.notify(GameOver(self.id, None))
@@ -147,58 +143,116 @@ class SideStacker:
             self.player_turn = 'X' if self.player_turn == 'C' else 'C'
             self.notify(PiecePlaced(self.id, current_player, row, side, current_turn))
 
-    def evaluate_game(self, _board=None) -> Optional[Literal['X', 'C']]:
-        """
-        Evaluates a sidestacker board game.
-        A sidestacker game is won when a player has four consecutive pieces in a row, column or diagonal.
-        If such combination is found returns the piece which has won
-        else return None if there aren't any winning combinations
-
-        This method takes an optional board to evaluate for easier testing. If no such
-        board is passed, the instance board is used.
-        """
-        board = _board or self.board
-
-        # Starting from the top left of the array, try to find consecutive pieces
-        for i in range(7):
-            for j in range(7):
-                if board[i][j] is None:
-                    continue
-
-                piece = board[i][j]
-                # Try to find the same piece, horizontally:
-                if j + 4 <= 7:
-                    for x in range(j, j + 4):
-                        if piece == board[i][x] and x == j + 3:
-                            return piece
-                        elif piece != board[i][x]:
-                            break
-
-                # Try to find the same piece, vertically:
-                if i + 4 <= 7:
-                    for x in range(i, i + 4):
-                        if piece == board[x][j] and x == i + 3:
-                            return piece
-                        elif piece != board[x][j]:
-                            break
-                # Try to find the same piece, bottom-right direction:
-                if i + 4 <= 7 and j + 4 <= 7:
-                    for (x, y) in zip(range(i, i + 4), range(j, j + 4)):
-                        if piece == board[x][y] and x == i + 3 and y == j + 3:
-                            return piece
-                        elif piece != board[x][y]:
-                            break
-                # Try to find the same piece, bottom-left direction:
-                if i + 4 <= 7 and j - 3 >= 0:
-                    for (x, y) in zip(range(i, i + 4), range(j, j - 4, -1)):
-                        if piece == board[x][y] and x == i + 3 and y == j - 3:
-                            return piece
-                        elif piece != board[x][y]:
-                            break
-
     def add_observer(self, cb: Callable[[SideStackerEvent], None]):
         self.dependants.append(cb)
 
     def notify(self, ev: SideStackerEvent):
         for cb in self.dependants:
             cb(ev)
+
+
+def get_next_free_position(board, row, side):
+    """
+    Get the next free position on a row from the given side
+    """
+    search_iter = range(0, 7) if side == 'L' else range(6, -1, -1)
+    for i in search_iter:
+        if board[row][i] is None:
+            return i
+
+    return None
+
+
+def is_move_legal(board, row, side):
+    """
+    Check if the move is legal.
+    A move is legal when the given row and side have a None value.
+    """
+    search_iter = range(0, 7) if side == 'L' else range(6, -1, -1)
+    for i in search_iter:
+        if board[row][i] is None:
+            return True
+
+    return False
+
+
+def check_range(board, iter, piece):
+    """
+    Given a board, and iterator of (row, col) indexes and a piece
+    Return true if all the indexes in the board are equal to piece
+    """
+    for (r, c) in iter:
+        if board[r][c] != piece:
+            return False
+    return True
+
+
+def evaluate_move(board, row, col, piece) -> bool:
+    """
+    Given a board, assume `col` and `row` is the last move by `piece`.
+    Check if piece has won the game.
+
+    The naive strategy to evaluate if a player has won is to check from every
+    row and col pair, check if there's four consecutive pieces, vertically, horizontally or diagonally
+    from that position.
+
+    Considering that the pieces already placed can't be moved and a winning combination
+    depends on the last placed piece, a more efficient strategy is to only check if
+    there's four consecutive pieces from the last placed piece.
+
+    We evaluate this here by creating an iterator of tuples of row, col pairs. Which
+    indicate what positions need to have the same piece in order to have a winning combination.
+
+    Since we have the piece that should be in the `row` and `col` position there's no need to add it
+    to the iterator. This is helpful when evaluating possible piece placements without needing to copy
+    the board.
+    """
+    consecutive_pieces_to_win = 4
+
+    # Factories for iterators, using the given position
+    increasing_i = lambda p: range(p + 1, p + consecutive_pieces_to_win)
+    decreasing_i = lambda p: range(p - 1, p - consecutive_pieces_to_win, -1)
+    fixed_i = lambda p: repeat(p, consecutive_pieces_to_win)
+
+    bound_check_inc = lambda p: p + consecutive_pieces_to_win <= 7
+    bound_check_dec = lambda p: p - (consecutive_pieces_to_win - 1) >= 0
+
+    # Check combinations of ranges that can win:
+    # Horizontally to the right:
+    if bound_check_inc(col) and \
+            check_range(board, zip(fixed_i(row), increasing_i(col)), piece):
+        return True
+    # Horizontally to the left:
+    if bound_check_dec(col) and \
+            check_range(board, zip(fixed_i(row), decreasing_i(col)), piece):
+        return True
+    # Vertically to the bottom
+    if bound_check_inc(row) and \
+            check_range(board, zip(increasing_i(row), fixed_i(col)), piece):
+        return True
+    # Vertically to the top
+    if bound_check_dec(row) and \
+            check_range(board, zip(decreasing_i(row), fixed_i(col)), piece):
+        return True
+    # Diagonally to top-left
+    if bound_check_dec(row) and \
+        bound_check_dec(col) and \
+            check_range(board, zip(decreasing_i(row), decreasing_i(col)), piece):
+        return True
+    # Diagonally to bottom-left
+    if bound_check_inc(row) and \
+        bound_check_dec(col) and \
+        check_range(board, zip(increasing_i(row), decreasing_i(col)), piece):
+        return True
+    # Diagonally to top right
+    if bound_check_dec(row) and \
+        bound_check_inc(col) and \
+        check_range(board, zip(decreasing_i(row), increasing_i(col)), piece):
+        return True
+    # Diagonally to bottom right
+    if bound_check_inc(row) and \
+        bound_check_inc(col) and \
+        check_range(board, zip(increasing_i(row), increasing_i(col)), piece):
+        return True
+
+    return False

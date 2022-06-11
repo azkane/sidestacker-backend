@@ -1,5 +1,7 @@
+from itertools import repeat
+
 from events import PiecePlacedError
-from sidestacker import SideStacker
+from sidestacker import SideStacker, get_next_free_position, check_range, evaluate_move
 
 
 # Connect
@@ -125,64 +127,9 @@ def test_place_piece_without_two_players_should_notify():
     assert isinstance(notification, PiecePlacedError)
     assert notification.detail == 'There should be two players to start the game'
 
-
-# Evaluation
-def test_empty_board_should_return_none():
-    ss = SideStacker()
-    w = [[None, None, None, None, None, None, None],
-         [None, None, None, None, None, None, None],
-         [None, None, None, None, None, None, None],
-         [None, None, None, None, None, None, None],
-         [None, None, None, None, None, None, None],
-         [None, None, None, None, None, None, None],
-         [None, None, None, None, None, None, None],
-         ]
-    assert ss.evaluate_game(w) is None
-
-
-def test_every_winning_horizontal_stack_should_win():
-    ss = SideStacker()
-    for i in range(0, 7):
-        for j in range(0, 4):
-            w = [[None] * 7 for _ in range(7)]
-            for x in range(j, j + 4):
-                w[i][x] = 'C'
-
-            assert ss.evaluate_game(w) == 'C'
-
-
-def test_every_winning_vertical_stack_should_win():
-    ss = SideStacker()
-    for i in range(0, 4):
-        for j in range(0, 7):
-            w = [[None] * 7 for _ in range(7)]
-            for x in range(i, i + 4):
-                w[i][x] = 'C'
-
-            assert ss.evaluate_game(w) == 'C'
-
-
-def test_every_winning_diagonal_stack_should_win():
-    ss = SideStacker()
-
-    for i in range(0, 7):
-        for j in range(0, 7):
-            # try to add a diagonal in the top-right
-            if i - 3 >= 0 and j + 3 < 7:
-                w = [[None] * 7 for _ in range(7)]
-                for (di, dj) in zip(range(i, i - 4, -1), range(j, j + 4)):
-                    w[di][dj] = 'C'
-                assert ss.evaluate_game(w) == 'C'
-            # try to add a diagonal in the top-left
-            if i - 3 >= 0 and j - 3 >= 0:
-                w = [[None] * 7 for _ in range(7)]
-                for (di, dj) in zip(range(i, i - 4, -1), range(j, j - 4, -1)):
-                    w[di][dj] = 'C'
-                assert ss.evaluate_game(w) == 'C'
-
+# Evaluation with move
 
 def test_winning_horizontal_stack_should_win():
-    ss = SideStacker()
     w = [['C', 'C', 'C', 'C', None, None, None],
          [None, None, None, None, None, None, None],
          [None, None, None, None, None, None, None],
@@ -191,11 +138,11 @@ def test_winning_horizontal_stack_should_win():
          [None, None, None, None, None, None, None],
          [None, None, None, None, None, None, None],
          ]
-    assert ss.evaluate_game(w) == 'C'
+    assert evaluate_move(w, 0, 0, 'C')
+    assert evaluate_move(w, 0, 3, 'C')
 
 
 def test_winning_vertical_stack_should_win():
-    ss = SideStacker()
     w = [[None, None, None, None, None, None, None],
          [None, None, None, None, None, None, None],
          [None, None, None, None, None, None, None],
@@ -204,11 +151,11 @@ def test_winning_vertical_stack_should_win():
          [None, None, None, 'C', None, None, None],
          [None, None, None, 'C', None, None, None],
          ]
-    assert ss.evaluate_game(w) == 'C'
+    assert evaluate_move(w, 3, 3, 'C')
+    assert evaluate_move(w, 6, 3, 'C')
 
 
 def test_winning_diagonal_br_stack_should_win():
-    ss = SideStacker()
     w = [['X', None, None, None, None, None, None],
          [None, 'X', None, None, None, None, None],
          [None, None, 'X', None, None, None, None],
@@ -217,11 +164,11 @@ def test_winning_diagonal_br_stack_should_win():
          [None, None, None, None, None, None, None],
          [None, None, None, None, None, None, None],
          ]
-    assert ss.evaluate_game(w) == 'X'
+    assert evaluate_move(w, 0, 0, 'X')
+    assert evaluate_move(w, 3, 3, 'X')
 
 
 def test_winning_diagonal_bl_stack_should_win():
-    ss = SideStacker()
     w = [[None, None, None, None, None, None, None],
          [None, None, None, None, None, None, None],
          [None, None, None, None, None, None, None],
@@ -230,7 +177,49 @@ def test_winning_diagonal_bl_stack_should_win():
          [None, None, None, None, 'X', None, None],
          [None, None, None, 'X', None, None, None],
          ]
-    assert ss.evaluate_game(w) == 'X'
+    assert evaluate_move(w, 6, 3, 'X')
+    assert evaluate_move(w, 3, 6, 'X')
+
+
+def test_every_winning_horizontal_stack_should_win_with_last_move():
+    for i in range(0, 7):
+        for j in range(0, 4):
+            w = [[None] * 7 for _ in range(7)]
+            for x in range(j, j + 4):
+                w[i][x] = 'C'
+            # Should win if placed at the start or end
+            assert evaluate_move(w, i, j, 'C')
+            assert evaluate_move(w, i, j + 4, 'C')
+
+
+def test_every_winning_vertical_stack_should_win_with_last_move():
+    for i in range(0, 4):
+        for j in range(0, 7):
+            w = [[None] * 7 for _ in range(7)]
+            for x in range(i, i + 4):
+                w[x][j] = 'C'
+
+            assert evaluate_move(w, i, j, 'C')
+            assert evaluate_move(w, i + 3, j, 'C')
+
+
+def test_every_winning_diagonal_stack_should_win_with_last_move():
+    for i in range(0, 7):
+        for j in range(0, 7):
+            # try to add a diagonal in the top-right
+            if i - 3 >= 0 and j + 3 < 7:
+                w = [[None] * 7 for _ in range(7)]
+                for (di, dj) in zip(range(i, i - 4, -1), range(j, j + 4)):
+                    w[di][dj] = 'C'
+                assert evaluate_move(w, i, j, 'C')
+                assert evaluate_move(w, i - 3, j + 3, 'C')
+            # try to add a diagonal in the top-left
+            if i - 3 >= 0 and j - 3 >= 0:
+                w = [[None] * 7 for _ in range(7)]
+                for (di, dj) in zip(range(i, i - 4, -1), range(j, j - 4, -1)):
+                    w[di][dj] = 'C'
+                assert evaluate_move(w, i, j, 'C')
+                assert evaluate_move(w, i - 3, j - 3, 'C')
 
 
 # utils
@@ -249,3 +238,23 @@ def new_sidestacker_game(p1_id='abc', p2_id='xyz'):
     second_turn_player = p1 if first_turn_player == p2 else p2
 
     return (ss, first_turn_player, second_turn_player)
+
+
+def test_next_free_position_left_should_be_0():
+    empty_board = [[None] * 7 for _ in range(7)]
+    assert get_next_free_position(empty_board, 0, 'L') == 0
+
+
+def test_next_free_position_right_should_be_6():
+    empty_board = [[None] * 7 for _ in range(7)]
+    assert get_next_free_position(empty_board, 0, 'R') == 6
+
+
+def test_check_range_should_return_true_when_all_match():
+    b = [['X', 'X', 'X', 'X']]
+    assert check_range(b, zip(repeat(0, 4), range(0, 4)), 'X')
+
+
+def test_check_range_should_return_false_when_some_dont_match():
+    b = [['X', 'X', 'C', 'X']]
+    assert not check_range(b, zip(repeat(0, 4), range(0, 4)), 'X')
